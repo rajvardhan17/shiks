@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>College Link Uploader</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    input[type=file] { display: block; margin-bottom: 12px; }
+    .summary { margin-top: 24px; }
+    .status { padding: 12px; border-radius: 4px; margin-bottom: 16px; }
+    .status.success { background: #e6ffe6; border: 1px solid #6cc76c; }
+    .status.error { background: #ffe6e6; border: 1px solid #d96565; }
+    ul { padding-left: 20px; }
+  </style>
+</head>
+<body>
+  <h1>College Link Uploader</h1>
+  <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+    <label for="file">Upload a text file (.txt) with one college URL per line:</label>
+    <input type="file" id="file" name="file" accept=".txt" required>
+    <button type="submit">Upload and Scrape</button>
+  </form>
+
+  {% if message %}
+    <div class="status success">{{ message }}</div>
+  {% endif %}
+
+  {% if errors %}
+    <div class="status error">
+      <strong>There were problems with the uploaded file:</strong>
+      <ul>
+        {% for error in errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="summary">
+    <h2>Current state</h2>
+    <p>Saved URLs: {{ current_count }}</p>
+    <p>Output rows:</p>
+    <ul>
+      <li>colleges.csv: {{ colleges_count }}</li>
+      <li>page_contents.csv: {{ page_contents_count }}</li>
+      <li>structured_facts.csv: {{ structured_count }}</li>
+      <li>course_details.csv: {{ course_details_count }}</li>
+    </ul>
+
+    <h3>Available downloads</h3>
+    <ul>
+      <li><a href="{{ url_for('download_output', filename='colleges.txt') }}">colleges.txt</a></li>
+      <li><a href="{{ url_for('download_output', filename='colleges.csv') }}">colleges.csv</a></li>
+      <li><a href="{{ url_for('download_output', filename='page_contents.csv') }}">page_contents.csv</a></li>
+      <li><a href="{{ url_for('download_output', filename='structured_facts.csv') }}">structured_facts.csv</a></li>
+      <li><a href="{{ url_for('download_output', filename='all_data.csv') }}">all_data.csv</a></li>
+      <li><a href="{{ url_for('download_output', filename='course_details.csv') }}">course_details.csv</a></li>
+    </ul>
+  </div>
+
+  <div class="summary">
+    <h2>Saved college URLs</h2>
+    {% if current_urls %}
+      <ul>
+        {% for url in current_urls %}
+          <li>{{ url }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>No URLs have been uploaded yet.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

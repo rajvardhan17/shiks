@@ -1,0 +1,12 @@
+Flask
+requests
+beautifulsoup4
+pandas
+pymongo
+SQLAlchemy>=1.4
+psycopg2-binary
+alembic
+redis
+rq
+aiohttp
+tenacity
