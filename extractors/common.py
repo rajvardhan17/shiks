@@ -23,23 +23,23 @@ FEE_PATTERN = re.compile(
 
 # Specific fee type patterns
 TOTAL_FEE_PATTERN = re.compile(
-    r"\b(?:total\s+(?:course\s+)?fees?|total\s+(?:academic\s+)?fees?|total\s+cost|course\s+fee|full\s+course\s+fee)\s*[:\-]?\s*(?:Rs\\.?|INR|\\u20b9|USD)?\s?[\\d,]+(?:\\.\\d+)?|"
-    r"(?:Rs\\.?|INR|\\u20b9|USD)\s?[\\d,]+(?:\\.\\d+)?\s*(?:per\s+(?:semester|year|program))?",
+    r"\b(?:total\s+(?:course\s+)?fees?|total\s+(?:academic\s+)?fees?|total\s+cost|course\s+fee|full\s+course\s+fee)\s*[:\-]?\s*(?:Rs\.?|INR|\u20b9|USD)?\s?[\d,]+(?:\.\d+)?|"
+    r"(?:Rs\.?|INR|\u20b9|USD)\s?[\d,]+(?:\.\d+)?\s*(?:per\s+(?:semester|year|program))?",
     re.IGNORECASE,
 )
 
 REGISTRATION_FEE_PATTERN = re.compile(
-    r"\b(?:registration\s+(?:fees?|charges?)|enrollment\s+(?:fees?|charges?)|application\s+(?:fees?|charges?))\s*[:\-]?\s*(?:Rs\\.?|INR|\\u20b9|USD)?\s?[\\d,]+(?:\\.\\d+)?",
+    r"\b(?:registration\s+(?:fees?|charges?)|enrollment\s+(?:fees?|charges?)|application\s+(?:fees?|charges?))\s*[:\-]?\s*(?:Rs\.?|INR|\u20b9|USD)?\s?[\d,]+(?:\.\d+)?",
     re.IGNORECASE,
 )
 
 TUITION_FEE_PATTERN = re.compile(
-    r"\b(?:tuition\s+(?:fees?|charges?)|academic\s+(?:fees?|charges?)|course\s+(?:fees?|charges?))\s*[:\-]?\s*(?:Rs\\.?|INR|\\u20b9|USD)?\s?[\\d,]+(?:\\.\\d+)?",
+    r"\b(?:tuition\s+(?:fees?|charges?)|academic\s+(?:fees?|charges?)|course\s+(?:fees?|charges?))\s*[:\-]?\s*(?:Rs\.?|INR|\u20b9|USD)?\s?[\d,]+(?:\.\d+)?",
     re.IGNORECASE,
 )
 
 ADMISSION_FEE_PATTERN = re.compile(
-    r"\b(?:admission\s+(?:fees?|charges?)|entrance\s+(?:fees?|charges?))\s*[:\-]?\s*(?:Rs\\.?|INR|\\u20b9|USD)?\s?[\\d,]+(?:\\.\\d+)?",
+    r"\b(?:admission\s+(?:fees?|charges?)|entrance\s+(?:fees?|charges?))\s*[:\-]?\s*(?:Rs\.?|INR|\u20b9|USD)?\s?[\d,]+(?:\.\d+)?",
     re.IGNORECASE,
 )
 
@@ -587,13 +587,13 @@ def extract_contact_info(text: str) -> dict[str, any]:
 
 
 def extract_admission_details(text: str) -> dict[str, any]:
-    eligibility = "10+2 or equivalent graduation"
-    min_pct = "50%"
+    eligibility = None
+    min_pct = None
     entrance_exams = []
-    age_criteria = "No upper age limit"
+    age_criteria = None
     reservation_rules = None
     domicile_rules = None
-    admission_process = "Online/Offline"
+    admission_process = None
     docs_required = []
     counselling = None
     selection = None
@@ -632,12 +632,12 @@ def extract_admission_details(text: str) -> dict[str, any]:
     return {
         "eligibility": eligibility,
         "minimum_percentage": min_pct,
-        "entrance_exam": ", ".join(entrance_exams) if entrance_exams else "Merit Based",
+        "entrance_exam": ", ".join(entrance_exams) if entrance_exams else None,
         "age_criteria": age_criteria,
         "reservation_rules": reservation_rules,
         "domicile_rules": domicile_rules,
         "admission_process": admission_process,
-        "documents_required": ", ".join(docs_required),
+        "documents_required": ", ".join(docs_required) if docs_required else None,
         "counselling_process": counselling,
         "selection_process": selection,
         "application_fee": app_fee,
@@ -660,7 +660,7 @@ def extract_placements_info(text: str) -> dict[str, any]:
     avg_pkg = None
     highest_pkg = None
     median_pkg = None
-    pct = "80%"
+    pct = None
     companies = None
     offers = None
     placed = None
@@ -696,15 +696,15 @@ def extract_placements_info(text: str) -> dict[str, any]:
         offers = int(off_match.group(1))
 
     return {
-        "year": "2025",
-        "average_package": avg_pkg or "₹ 6.5 LPA",
-        "median_package": median_pkg or "₹ 5.8 LPA",
-        "highest_package": highest_pkg or "₹ 24 LPA",
+        "year": None,
+        "average_package": avg_pkg,
+        "median_package": median_pkg,
+        "highest_package": highest_pkg,
         "placement_percentage": pct,
-        "companies_visited": companies or 120,
-        "offers_made": offers or 350,
-        "students_placed": placed or 300,
-        "internships": "Available with stipend up to ₹ 30,000/month",
+        "companies_visited": companies,
+        "offers_made": offers,
+        "students_placed": placed,
+        "internships": None,
         "department_wise_placement": {},
         "year_wise_placement": {}
     }
@@ -716,7 +716,7 @@ def extract_recruiters_list(text: str) -> list[str]:
     for r in list_recruiters:
         if re.search(rf"\b{re.escape(r)}\b", text, re.IGNORECASE):
             found.append(r)
-    return found if found else ["TCS", "Infosys", "Wipro", "Cognizant"]
+    return found
 
 
 def extract_faculty_list(text: str) -> list[dict[str, any]]:
@@ -735,11 +735,6 @@ def extract_faculty_list(text: str) -> list[dict[str, any]]:
             "email": f"{name.lower().replace(' ', '.')}@college.edu",
             "photo": None
         })
-    if not faculty:
-        faculty = [
-            {"faculty_name": "Dr. Ramesh Kumar", "department": "CSE", "qualification": "Ph.D.", "designation": "Professor & Head", "experience": "15 Years", "research_papers": 12, "google_scholar": None, "email": "ramesh.kumar@college.edu", "photo": None},
-            {"faculty_name": "Dr. Priya Sharma", "department": "Management", "qualification": "Ph.D.", "designation": "Associate Professor", "experience": "8 Years", "research_papers": 6, "google_scholar": None, "email": "priya.sharma@college.edu", "photo": None}
-        ]
     return faculty
 
 
@@ -785,7 +780,7 @@ def extract_hostels_list(text: str) -> list[dict[str, any]]:
             "capacity": 500,
             "room_types": "2-Seater, 3-Seater",
             "ac_non_ac": "Both AC and Non-AC available",
-            "fees": "₹ 80,000/year",
+            "fees": None,
             "facilities": "Wi-Fi, Gym, Laundry, Hot Water",
             "mess_charges": "₹ 3,500/month"
         })

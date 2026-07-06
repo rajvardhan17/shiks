@@ -145,17 +145,33 @@ def build_college_payload(college_url: str, html: str, structured_records: list[
     }
 
     admission_info = {
-        "eligibility": "10+2", "minimum_percentage": "50%", "entrance_exam": "Merit Based",
-        "age_criteria": "No upper age limit", "reservation_rules": None, "domicile_rules": None,
-        "admission_process": "Online", "documents_required": None, "counselling_process": None,
-        "selection_process": None, "application_fee": None, "last_date": None, "application_link": None,
-        "brochure_pdf": None
+        "eligibility": None,
+        "minimum_percentage": None,
+        "entrance_exam": None,
+        "age_criteria": None,
+        "reservation_rules": None,
+        "domicile_rules": None,
+        "admission_process": None,
+        "documents_required": None,
+        "counselling_process": None,
+        "selection_process": None,
+        "application_fee": None,
+        "last_date": None,
+        "application_link": None,
+        "brochure_pdf": None,
     }
     placement = {
-        "year": "2025", "average_package": "₹ 6.5 LPA", "median_package": "₹ 5.8 LPA",
-        "highest_package": "₹ 24 LPA", "placement_percentage": "80%", "companies_visited": 120,
-        "offers_made": 350, "students_placed": 300, "internships": "Available",
-        "department_wise_placement": {}, "year_wise_placement": {}
+        "year": None,
+        "average_package": None,
+        "median_package": None,
+        "highest_package": None,
+        "placement_percentage": None,
+        "companies_visited": None,
+        "offers_made": None,
+        "students_placed": None,
+        "internships": None,
+        "department_wise_placement": {},
+        "year_wise_placement": {},
     }
     infrastructure = {
         "hostel": False, "library": False, "wifi": False, "labs": False, "gym": False,
@@ -206,7 +222,7 @@ def build_college_payload(college_url: str, html: str, structured_records: list[
 
         # Admission
         for k, v in rec.get("admission_details", {}).items():
-            if v and (not admission_info.get(k) or admission_info[k] in ["10+2", "50%", "Merit Based"]):
+            if v and not admission_info.get(k):
                 admission_info[k] = v
 
         # Placement
@@ -220,7 +236,13 @@ def build_college_payload(college_url: str, html: str, structured_records: list[
                 infrastructure[k] = True
 
         # Lists accumulation
-        specializations_list.extend(rec.get("specializations", []))
+        for spec in rec.get("specializations", []):
+            if isinstance(spec, str):
+                specializations_list.append({"stream": None, "specialization_name": spec})
+            elif isinstance(spec, dict):
+                specializations_list.append(spec)
+            else:
+                specializations_list.append({"stream": None, "specialization_name": str(spec)})
         recruiters_list.extend(rec.get("recruiters", []))
         faculty_list.extend(rec.get("faculty", []))
         hostels_list.extend(rec.get("hostels", []))
@@ -239,69 +261,68 @@ def build_college_payload(college_url: str, html: str, structured_records: list[
         if rec.get("courses"):
             raw_names = rec["courses"].split(" | ")
             for name in raw_names:
-                if name.strip() and name.strip() not in [c.get("course_name") for c in courses_list]:
-                    courses_list.append({
-                        "course_name": name.strip(),
-                        "degree": name.split()[0] if name.split() else "Degree",
-                        "stream": "Engineering" if "B.Tech" in name or "M.Tech" in name else "Management" if "MBA" in name or "BBA" in name else "General",
-                        "duration": "4 Years" if "B.Tech" in name or "BE" in name else "2 Years",
-                        "mode": "Full-time",
-                        "intake": "2026",
-                        "seats": "60",
-                        "eligibility": "10+2 with 50%",
-                        "entrance_exam": "JEE Main" if "B.Tech" in name else "CAT" if "MBA" in name else "Merit",
-                        "fees": "₹ 1,25,000/year",
-                        "syllabus_pdf": None,
-                        "curriculum": None,
-                        "course_brochure": None
-                    })
+                name = name.strip()
+                if not name or name in [c.get("course_name") for c in courses_list]:
+                    continue
 
-    # Default fallbacks if no subpage parsed
+                degree = None
+                if any(keyword in name for keyword in ("B.Tech", "M.Tech", "BE", "ME")):
+                    degree = "Engineering"
+                elif any(keyword in name for keyword in ("MBA", "BBA", "BMS")):
+                    degree = "Management"
+
+                courses_list.append({
+                    "course_name": name,
+                    "degree": degree,
+                    "stream": None,
+                    "duration": None,
+                    "mode": None,
+                    "intake": None,
+                    "seats": None,
+                    "eligibility": None,
+                    "entrance_exam": None,
+                    "fees": None,
+                    "syllabus_pdf": None,
+                    "curriculum": None,
+                    "course_brochure": None,
+                })
+
+    # Preserve empty lists if no subpage data is found.
     if not courses_list:
-        courses_list = [
-            {"course_name": "B.Tech Computer Science", "degree": "B.Tech", "stream": "Engineering", "duration": "4 Years", "mode": "Full-time", "intake": "2026", "seats": "120", "eligibility": "JEE Main", "fees": "₹ 1,50,000/year", "syllabus_pdf": None, "curriculum": None, "course_brochure": None},
-            {"course_name": "MBA Finance", "degree": "MBA", "stream": "Management", "duration": "2 Years", "mode": "Full-time", "intake": "2026", "seats": "60", "eligibility": "CAT/MAT", "fees": "₹ 2,00,000/year", "syllabus_pdf": None, "curriculum": None, "course_brochure": None}
-        ]
+        courses_list = []
 
-    # Specializations mapping
     if not specializations_list:
-        specializations_list = [
-            {"stream": "Computer Science", "specialization_name": "Artificial Intelligence"},
-            {"stream": "Computer Science", "specialization_name": "Data Science"},
-            {"stream": "Management", "specialization_name": "Finance"}
-        ]
+        specializations_list = []
 
     # Recruiters detail list
     recruiters_details = []
     for r in list(set(recruiters_list)):
         recruiters_details.append({
             "company_name": r,
-            "role": "Software Engineer" if r in ["Google", "Microsoft", "Amazon", "TCS"] else "Management Trainee",
-            "package": "₹ 8 LPA",
-            "number_hired": 15
+            "role": None,
+            "package": None,
+            "number_hired": None,
         })
 
-    # Fees structure mapping
+    # Fees structure mapping only when courses provide fee details.
     fees_list = []
     for c in courses_list:
-        fees_list.append({
-            "course_name": c["course_name"],
-            "tuition_fee": c["fees"],
-            "hostel_fee": "₹ 80,000/year",
-            "exam_fee": "₹ 2,000/sem",
-            "library_fee": "₹ 1,000/year",
-            "security_deposit": "₹ 5,000 (Refundable)",
-            "transport_fee": "₹ 15,000/year",
-            "miscellaneous_fee": "₹ 3,000/year",
-            "total_annual_fee": c["fees"],
-            "total_course_fee": "₹ 6,000,00"
-        })
+        if c.get("course_name") and c.get("fees"):
+            fees_list.append({
+                "course_name": c["course_name"],
+                "tuition_fee": c["fees"],
+                "hostel_fee": None,
+                "exam_fee": None,
+                "library_fee": None,
+                "security_deposit": None,
+                "transport_fee": None,
+                "miscellaneous_fee": None,
+                "total_annual_fee": c["fees"],
+                "total_course_fee": None,
+            })
 
-    # Cutoffs mapping
-    cutoffs_list = [
-        {"course_name": "B.Tech Computer Science", "year": "2025", "category": "General", "round_1": "95 percentile", "round_2": "97 percentile", "round_3": "98 percentile", "last_round": "98.5 percentile"},
-        {"course_name": "B.Tech Computer Science", "year": "2025", "category": "OBC", "round_1": "90 percentile", "round_2": "92 percentile", "round_3": "94 percentile", "last_round": "94.5 percentile"}
-    ]
+    # Cutoffs mapping remains empty unless extracted explicitly.
+    cutoffs_list = []
 
     # Deduplicate other lists
     specializations_list = [dict(t) for t in {tuple(d.items()) for d in specializations_list}]
@@ -329,7 +350,7 @@ def build_college_payload(college_url: str, html: str, structured_records: list[
     if college_type == "Government":
         ownership = "Central" if "central" in body_text.lower() or "iit" in page_title.lower() or "nit" in page_title.lower() else "State"
 
-    accreditation = "NAAC A"
+    accreditation = None
     naac_match = re.search(r"NAAC\s+(?:Grade\s+)?([A-G]\+*)", body_text, re.IGNORECASE)
     if naac_match:
         accreditation = "NAAC " + naac_match.group(1).upper()
@@ -340,35 +361,38 @@ def build_college_payload(college_url: str, html: str, structured_records: list[
         "short_name": re.findall(r"\b[A-Z]{3,5}\b", page_title)[0] if re.findall(r"\b[A-Z]{3,5}\b", page_title) else None,
         "college_type": college_type,
         "ownership": ownership,
-        "university": "Affiliated University",
-        "affiliated_university": "State Technological University",
-        "approved_by": "AICTE, UGC",
+        "university": None,
+        "affiliated_university": None,
+        "approved_by": None,
         "accreditation": accreditation,
-        "established_year": established_year or "2001",
-        "campus_area": "50 Acres",
+        "established_year": established_year,
+        "campus_area": None,
         "official_website": college_url,
-        "logo_url": "https://example.com/logo.png",
-        "banner_image_url": "https://example.com/cover.png",
+        "logo_url": None,
+        "banner_image_url": None,
         "about_college": body_text[:600] if body_text else None,
-        "highlights": "Top placements, Experienced faculty, World-class labs."
+        "highlights": None,
     }
 
     # Combined Compare parameters
-    compare_parameters = {
-        "fees": basic_information.get("college_name") + " Fees: ₹ 1.25L - 2L/year",
-        "average_package": placement.get("average_package"),
-        "highest_package": placement.get("highest_package"),
-        "placement_percentage": placement.get("placement_percentage"),
-        "naac_grade": basic_information.get("accreditation"),
-        "nirf_rank": rankings_list[0]["rank"] if rankings_list else 101,
-        "campus_size": basic_information.get("campus_area"),
-        "hostel": "Available",
-        "faculty_count": len(faculty_list) if faculty_list else 25,
-        "student_count": 2500,
-        "student_faculty_ratio": "15:1",
-        "entrance_exams": admission_info.get("entrance_exam"),
-        "courses_offered": len(courses_list)
-    }
+    compare_parameters = {}
+    if fees_list:
+        compare_parameters["fees"] = fees_list[0].get("tuition_fee")
+    if placement.get("average_package"):
+        compare_parameters["average_package"] = placement.get("average_package")
+    if placement.get("highest_package"):
+        compare_parameters["highest_package"] = placement.get("highest_package")
+    if placement.get("placement_percentage"):
+        compare_parameters["placement_percentage"] = placement.get("placement_percentage")
+    if accreditation:
+        compare_parameters["naac_grade"] = accreditation
+    if rankings_list:
+        compare_parameters["nirf_rank"] = rankings_list[0].get("rank")
+    if basic_information.get("campus_area"):
+        compare_parameters["campus_size"] = basic_information.get("campus_area")
+    if admission_info.get("entrance_exam"):
+        compare_parameters["entrance_exams"] = admission_info.get("entrance_exam")
+    compare_parameters["courses_offered"] = len(courses_list)
 
     # Backward compatible contact details formatting
     if not contact["phone_numbers"] and main_contact.get("phone_numbers"):

@@ -190,7 +190,7 @@ def map_and_save(full_extracted: dict[str, Any]) -> None:
         return
 
     # 2. Transactionally clear old relations and write fresh ones
-    session = SessionLocal()
+    session = _get_session()
     try:
         session.query(Course).filter(Course.college_id == college_db_id).delete()
         session.query(Specialization).filter(Specialization.college_id == college_db_id).delete()

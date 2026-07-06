@@ -8,7 +8,9 @@ from scrapers.aggregator import build_college_payload
 from scrapers.crawler import fetch_page
 from scrapers.extractor import extract_data
 from scrapers.page_content_extractor import extract_page_content
-from scrapers.page_finder import is_valid_link
+from scrapers.page_finder import is_valid_link, find_pages
+from scrapers.discovery import discover_internal_links
+from scrapers.page_classifier import classify_page
 from scrapers.saver import save_to_csv
 from extractors import extract_structured_facts
 from extractors.common import parse_course_detail_text
@@ -30,36 +32,26 @@ CONTENT_CATEGORIES = (
     "downloads",
     "news",
     "alumni",
-    "faqs",
 )
+
+
+def load_urls(urls_file: str) -> list[str]:
+    if not os.path.exists(urls_file):
+        return []
+    lines = Path(urls_file).read_text(encoding="utf-8").splitlines()
+    return [l.strip() for l in lines if l.strip()]
 
 
 def failed_record(url: str, error: Exception) -> dict[str, str]:
     return {
         "college_name": "Unknown",
         "website": url,
-        "admissions": "",
-        "courses": "",
-        "placements": "",
-        "fees": "",
-        "contact": "",
-        "courses_list": "",
-        "fees_list": "",
-        "rankings": "",
-        "cutoffs": "",
-        "course_details": "",
         "status": "failed",
         "error": str(error),
     }
 
 
-def failed_page_content_record(
-    college_name: str,
-    website: str,
-    category: str,
-    page_url: str,
-    error: Exception,
-) -> dict[str, str]:
+def failed_page_content_record(college_name: str, website: str, category: str, page_url: str, error: Exception) -> dict[str, str]:
     return {
         "college_name": college_name,
         "website": website,
@@ -68,28 +60,24 @@ def failed_page_content_record(
         "page_title": "",
         "headings": "",
         "content": "",
+        "table_content": "",
         "status": "failed",
         "error": str(error),
     }
 
 
-def load_urls(urls_file: str) -> list[str]:
-    path = Path(urls_file)
-    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+def fetch_cached_page(url: str, cache: dict[str, str]) -> str:
+    if url in cache:
+        return cache[url]
+    html = fetch_page(url)
+    if html is None:
+        raise RuntimeError(f"Failed to fetch page: {url}")
+    cache[url] = html
+    return html
 
 
-def fetch_cached_page(url: str, page_cache: dict[str, str]) -> str:
-    if url not in page_cache:
-        page_cache[url] = fetch_page(url)
-    return page_cache[url]
-
-
-def extract_category_page_content(
-    record: dict[str, str],
-    page_cache: dict[str, str],
-) -> list[dict[str, str]]:
+def extract_category_page_content(record: dict[str, str], page_cache: dict[str, str]) -> list[dict[str, str]]:
     content_records: list[dict[str, str]] = []
-
     for category in CONTENT_CATEGORIES:
         page_url = record.get(category, "")
 
@@ -99,8 +87,8 @@ def extract_category_page_content(
         if not is_valid_link(page_url):
             content_records.append(
                 failed_page_content_record(
-                    record["college_name"],
-                    record["website"],
+                    record.get("college_name", "Unknown"),
+                    record.get("website", ""),
                     category,
                     page_url,
                     ValueError("Skipped invalid content URL"),
@@ -113,8 +101,8 @@ def extract_category_page_content(
             content = extract_page_content(html)
             content_records.append(
                 {
-                    "college_name": record["college_name"],
-                    "website": record["website"],
+                    "college_name": record.get("college_name", ""),
+                    "website": record.get("website", ""),
                     "category": category,
                     "page_url": page_url,
                     **content,
@@ -125,8 +113,8 @@ def extract_category_page_content(
         except Exception as error:
             content_records.append(
                 failed_page_content_record(
-                    record["college_name"],
-                    record["website"],
+                    record.get("college_name", "Unknown"),
+                    record.get("website", ""),
                     category,
                     page_url,
                     error,
@@ -295,7 +283,54 @@ def scrape_colleges(
     for url in urls:
         try:
             html = fetch_page(url)
+            if html is None:
+                raise RuntimeError("Page unreachable or network error")
             data = extract_data(url, html)
+
+            # Discover section pages (admissions, courses, fees, placements, etc.)
+            try:
+                section_pages = find_pages(url, html)
+                # Validate candidates via light-weight classification
+                for cat, page_url in section_pages.items():
+                    if not page_url:
+                        continue
+                    # If extractor already found a page, prefer it
+                    if data.get(cat):
+                        continue
+                    try:
+                        page_html = fetch_page(page_url)
+                        if not page_html:
+                            continue
+                        best_cat, conf = classify_page(page_url, page_html)
+                        # require reasonable confidence to accept the page
+                        if best_cat == cat and conf >= 0.35:
+                            data.setdefault(cat, page_url)
+                    except Exception:
+                        # Ignore classification failures and keep going
+                        continue
+
+                # If some categories are still missing, crawl internal links up to depth=2
+                missing = [c for c in section_pages.keys() if not data.get(c)]
+                if missing:
+                    discovered = discover_internal_links(url, max_depth=2, max_pages=200)
+                    # iterate discovered pages and classify
+                    for page_url in discovered:
+                        if any(data.get(c) for c in missing):
+                            # refresh missing list
+                            missing = [c for c in section_pages.keys() if not data.get(c)]
+                        if not missing:
+                            break
+                        try:
+                            page_html = fetch_page(page_url)
+                            if not page_html:
+                                continue
+                            best_cat, conf = classify_page(page_url, page_html)
+                            if best_cat in missing and conf >= 0.45:
+                                data.setdefault(best_cat, page_url)
+                        except Exception:
+                            continue
+            except Exception as fe:
+                LOGGER.debug("find_pages/discovery failed for %s: %s", url, fe)
             data["status"] = "success"
             data["error"] = ""
             records.append(data)
@@ -311,6 +346,9 @@ def scrape_colleges(
     # Build consolidated payloads with all category facts!
     for url in urls:
         html = page_cache.get(url) or fetch_page(url)
+        if html is None:
+            LOGGER.warning("Skipping payload build for %s: page unreachable", url)
+            continue
         payloads.append(build_college_payload(url, html, structured_records, source="aggregator"))
 
     aggregate_college_facts(records, structured_records)
@@ -326,8 +364,10 @@ def scrape_colleges(
 
     # Persist to PostgreSQL (skipped gracefully when DB is unavailable)
     try:
-        from scrapers.saver_postgres import map_and_save, is_db_available
-        if not is_db_available():
+        from edusphere.pipelines.storage_pipeline import StoragePipeline
+
+        storage_pipeline = StoragePipeline()
+        if not storage_pipeline.is_db_available():
             LOGGER.warning(
                 "PostgreSQL is not reachable — skipping database persistence. "
                 "Start PostgreSQL and re-run to save data to the database."
@@ -336,7 +376,7 @@ def scrape_colleges(
             saved = 0
             for payload in payloads:
                 try:
-                    map_and_save(payload)
+                    storage_pipeline.map_and_save(payload)
                     saved += 1
                 except Exception as payload_err:
                     LOGGER.error("Failed to persist payload for %s: %s", payload.get("college_id"), payload_err)

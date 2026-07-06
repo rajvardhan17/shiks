@@ -7,6 +7,7 @@ from datetime import datetime
 from time import sleep
 
 from scrapers import crawler, extractor
+from scrapers.aggregator import build_college_payload
 from scrapers.saver_postgres import map_and_save
 
 
@@ -25,12 +26,14 @@ def process_url(url: str) -> None:
         return
 
     extracted = extractor.extract_data(url, html)
-    extracted["checksum"] = checksum_text(html)
-    extracted["fetched_at"] = datetime.utcnow().isoformat()
-    extracted["status"] = "fetched"
+    structured_records = [extracted.get("structured_facts")] if extracted.get("structured_facts") else []
+    payload = build_college_payload(url, html, structured_records=structured_records)
+    payload["checksum"] = checksum_text(html)
+    payload["fetched_at"] = datetime.utcnow().isoformat()
+    payload["status"] = "fetched"
 
     try:
-        map_and_save(extracted)
+        map_and_save(payload)
         print(f"Saved: {url}")
     except Exception as exc:
         print(f"Failed to save {url}: {exc}")

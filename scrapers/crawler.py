@@ -3,7 +3,7 @@ from itertools import cycle
 from urllib.parse import urlparse, urlunparse
 
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import RetryError, retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -88,7 +88,7 @@ def clean_html(html: str) -> str:
 @retry(
     stop=stop_after_attempt(4),
     wait=wait_exponential(multiplier=1, min=1, max=30),
-    retry=retry_if_exception_type(RuntimeError),
+    retry=retry_if_exception_type((RuntimeError, requests.exceptions.RequestException)),
 )
 def request_page(
     url: str,
@@ -124,6 +124,15 @@ def request_page(
         except requests.exceptions.RequestException as exc2:
             logger.error("Request failed for %s: %s", url, exc2)
             raise RuntimeError(f"Request failed for {url}: {exc2}") from exc2
+        except Exception as exc2:
+            logger.error("Unexpected error for %s: %s", url, exc2)
+            raise RuntimeError(f"Request failed for {url}: {exc2}") from exc2
+    except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as exc:
+        logger.error("Request failed for %s: %s", url, exc)
+        raise RuntimeError(f"Request failed for {url}: {exc}") from exc
+    except Exception as exc:
+        logger.error("Unexpected error for %s: %s", url, exc)
+        raise RuntimeError(f"Request failed for {url}: {exc}") from exc
 
     try:
         # Treat 429/5xx as transient
@@ -158,11 +167,20 @@ def fetch_page(
         try:
             response = request_page(candidate_url, session, timeout)
             break
-        except RuntimeError as exc:
+        except Exception as exc:
             last_error = exc
-            logger.warning("Trying next URL candidate after failure: %s", candidate_url)
+            logger.warning(
+                "Trying next URL candidate after failure: %s (%s)",
+                candidate_url,
+                type(exc).__name__,
+            )
     else:
-        raise RuntimeError(f"All URL candidates failed for {url}") from last_error
+        logger.error("All URL candidates failed for %s: %s", url, last_error)
+        return None
+
+    if response is None:
+        logger.error("No response returned for %s", url)
+        return None
 
     if response.history:
         redirect_chain = " -> ".join(
